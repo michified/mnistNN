@@ -5,7 +5,8 @@
 using namespace std;
 
 const int RES = 28;
-const int NUMTRAIN = 60000;
+const int NUMTRAIN = 12000;
+const int TRAINFILES = 5;
 const int NUMTEST = 10000;
 const int EPOCHS = 1000;
 const int BATCHSIZE = 500;
@@ -23,24 +24,26 @@ public:
     double vals[RES * RES];
 };
 
-Picture trainData[NUMTRAIN], testData[NUMTEST];
+Picture trainData[NUMTRAIN * TRAINFILES], testData[NUMTEST];
 
 void readData() {
     cout << "Reading data..." << endl;
-    ifstream cin("mnist_train.txt");
-    string inp, val;
     int i, k, tmp;
-    for (k = 0; k < NUMTRAIN; k++) {
-        cin >> inp;
-        stringstream ss(inp);
-        getline(ss, val, ',');
-        trainData[k].label = stoi(val);
-        for (i = 0; i < RES * RES; i++) {
+    string inp, val;
+    for (int f = 0; f < TRAINFILES; f++) {
+        ifstream cin("mnist_train" + to_string(f + 1) + ".txt");
+        for (k = f * NUMTRAIN; k < (f + 1) * NUMTRAIN; k++) {
+            cin >> inp;
+            stringstream ss(inp);
             getline(ss, val, ',');
-            trainData[k].vals[i] = (double) stoi(val);
+            trainData[k].label = stoi(val);
+            for (i = 0; i < RES * RES; i++) {
+                getline(ss, val, ',');
+                trainData[k].vals[i] = (double) stoi(val);
+            }
         }
+        cin.close();
     }
-    cin.close();
 
     ifstream cin2("mnist_test.txt");
     for (k = 0; k < NUMTEST; k++) {
@@ -53,7 +56,7 @@ void readData() {
             testData[k].vals[i] = (double) stoi(val);
         }
     }
-    cin.close();
+    cin2.close();
     cout << "Finished reading data." << endl;
 }
 
