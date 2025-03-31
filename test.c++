@@ -47,10 +47,10 @@ public:
         return max(0.0, x);
     }
 
-    void computeVal() {
+    void computeVal(bool clamp) {
         z = bias;
         for (auto& connection : connections) z += connection.first * connection.second->a;
-        a = ReLU(z);
+        a = clamp ? ReLU(z) : z;
     }
 };
 
@@ -81,8 +81,8 @@ void initLayers() {
         prev = LAYERSIZE;
     }
     layers[LAYERS + 1].init(OUTPUTS, prev);
-    for (auto& neuron : layers[i].neurons) {
-        for (j = 0; j < prev; j++) neuron.connections[j].second = &layers[i - 1].neurons[j];
+    for (auto& neuron : layers[LAYERS + 1].neurons) {
+        for (j = 0; j < prev; j++) neuron.connections[j].second = &layers[LAYERS].neurons[j];
     }
     cout << "Neural net created." << endl;
 
@@ -123,9 +123,9 @@ void computeBatch() {
         picture = &testData[k];
         for (i = 0; i < RES * RES; i++) layers[0].neurons[i].a = picture->vals[i];
         for (i = 1; i <= LAYERS; i++) {
-            for (j = 0; j < LAYERSIZE; j++) layers[i].neurons[j].computeVal();
+            for (j = 0; j < LAYERSIZE; j++) layers[i].neurons[j].computeVal(true);
         }
-        for (i = 0; i < OUTPUTS; i++) layers[LAYERS + 1].neurons[i].computeVal();
+        for (i = 0; i < OUTPUTS; i++) layers[LAYERS + 1].neurons[i].computeVal(false);
         for (double conf : softmax()) {
             cout2 << fixed << setprecision(2) << conf << ' ';
         }
