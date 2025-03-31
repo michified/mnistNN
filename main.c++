@@ -8,12 +8,15 @@ const int RES = 28;
 const int NUMTRAIN = 12000;
 const int TRAINFILES = 5;
 const int NUMTEST = 10000;
-const int EPOCHS = 1000;
+const int EPOCHS = 1500;
 const int BATCHSIZE = 500;
 const int LAYERS = 2;
 const int LAYERSIZE = 50;
 const int OUTPUTS = 10;
-const double LEARNINGRATE = 0.005;
+const double LEARNINGRATE = 0.001;
+const double DECAY1 = 0.99;
+const double DECAY2 = 0.999;
+const double DELTA = 0.00000001;
 static random_device rd;
 static mt19937 gen(rd());
 normal_distribution<double> d(0, (double) 2 / (RES * RES));
@@ -127,17 +130,21 @@ vector<double> softmax() {
 
 vector<pair<vector<int>, double>> connectionGrads; // layerR, neuronL, neuronR, change
 vector<pair<pair<int, int>, double>> biasGrads; // layer, neuron, change
+vector<pair<double, double>> connectionGradsAdam, biasGradsAdam; // mean, var
 int tCG, tBG;
+double decay1PowT = DECAY1, decay2PowT = DECAY2;
 
 void backpropagate(int layer, vector<double> d) {
     int prev, neuron;
     for (neuron = 0; neuron < (layer <= LAYERS ? LAYERSIZE : OUTPUTS); neuron++) {
         for (prev = 0; prev < (layer > 1 ? LAYERSIZE : RES * RES); prev++) {
             if (tCG == connectionGrads.size()) connectionGrads.push_back({{layer, prev, neuron}, 0.0});
+            if (tCG == connectionGradsAdam.size()) connectionGradsAdam.push_back({0.0, 0.0});
             connectionGrads[tCG].second += d[neuron] * layers[layer - 1].neurons[prev].a;
             tCG++;
         }
         if (tBG == biasGrads.size()) biasGrads.push_back({{layer, neuron}, 0.0});
+        if (tBG == biasGradsAdam.size()) biasGradsAdam.push_back({0.0, 0.0});
         biasGrads[tBG].second += d[neuron];
         tBG++;
     }
@@ -170,8 +177,7 @@ int computeBatch(bool train, int batchSize) {
         }
         softA = softmax();
         for (i = 0; i < OUTPUTS; i++) {
-            d[i] = softA[i] - (picture->label == i);
-            // totCost += (softA[i] - (picture->label == i)) * (softA[i] - (picture->label == i));
+            if (train) d[i] = softA[i] - (picture->label == i);
             if (softA[i] > hi) {
                 hi = softA[i];
                 hiLabel = i;
@@ -184,9 +190,7 @@ int computeBatch(bool train, int batchSize) {
             backpropagate(LAYERS + 1, d);
         }
         fill(d.begin(), d.end(), 0);
-        // if (train and (k + 1) % (batchSize / 5) == 0) cout << to_string(k + 1) + " training cases out of " + to_string(batchSize) + " complete." << endl;
     }
-    // cout << to_string(totCost / batchSize) << endl;
     return correct;
 }
 
@@ -194,20 +198,34 @@ void trainNetwork() {
     cout << "Training the neural net..." << endl;
     for (int epoch = 1; epoch <= EPOCHS; epoch++) {
         random_shuffle(trainData, trainData + NUMTEST);
-        double totCorrectTrain = 0, totCorrectTest = 0;
+        double totCorrectTrain = 0, totCorrectTest = 0, biasCorrectedMean, biasCorrectedVar;
         totCorrectTrain += computeBatch(true, BATCHSIZE);
-        for (auto& connectionGrad : connectionGrads) {
+        for (int i = 0; i < connectionGrads.size(); i++) {
+            auto& connectionGrad = connectionGrads[i];
+            auto& connectionGradAdam = connectionGradsAdam[i];
             connectionGrad.second /= BATCHSIZE;
-            layers[connectionGrad.first[0]].neurons[connectionGrad.first[2]].connections[connectionGrad.first[1]].first -= connectionGrad.second * LEARNINGRATE;
+            connectionGradAdam.first = connectionGradAdam.first * DECAY1 + connectionGrad.second * (1 - DECAY1);
+            connectionGradAdam.second = connectionGradAdam.second * DECAY2 + connectionGrad.second * connectionGrad.second * (1 - DECAY1);
+            biasCorrectedMean = connectionGradAdam.first / (1 - decay1PowT);
+            biasCorrectedVar = connectionGradAdam.second / (1 - decay2PowT);
+            layers[connectionGrad.first[0]].neurons[connectionGrad.first[2]].connections[connectionGrad.first[1]].first -= LEARNINGRATE * (biasCorrectedMean / ((sqrt(biasCorrectedVar)) + DELTA));
             connectionGrad.second = 0;
         }
-        for (auto& biasGrad : biasGrads) {
+        for (int i = 0; i < biasGrads.size(); i++) {
+            auto& biasGrad = biasGrads[i];
+            auto& biasGradAdam = biasGradsAdam[i];
             biasGrad.second /= BATCHSIZE;
-            layers[biasGrad.first.first].neurons[biasGrad.first.second].bias -= biasGrad.second * LEARNINGRATE;
+            biasGradAdam.first = biasGradAdam.first * DECAY1 + biasGrad.second * (1 - DECAY1);
+            biasGradAdam.second = biasGradAdam.second * DECAY2 + biasGrad.second * biasGrad.second * (1 - DECAY1);
+            biasCorrectedMean = biasGradAdam.first / (1 - decay1PowT);
+            biasCorrectedVar = biasGradAdam.second / (1 - decay2PowT);
+            layers[biasGrad.first.first].neurons[biasGrad.first.second].bias -= LEARNINGRATE * (biasCorrectedMean / ((sqrt(biasCorrectedVar)) + DELTA));
             biasGrad.second = 0;
         }
+        decay1PowT *= DECAY1;
+        decay2PowT *= DECAY2;
         // cout << "Testing..." << endl;
-        if (epoch % 50 == 0) {
+        if (epoch % 25 == 0) {
             totCorrectTest += computeBatch(false, NUMTEST);
             cout << "Epoch #" + to_string(epoch) + " complete." << endl;
             cout << "Training data accuracy: " + to_string(totCorrectTrain / BATCHSIZE * 100).substr(0, 5) + "%." << endl;
