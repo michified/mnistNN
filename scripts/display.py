@@ -54,7 +54,7 @@ def display(picture):
 pictures = []
 
 print("Reading data...")
-f = open("mnist_test.txt", "r")
+f = open("data\\mnist_test.txt", "r")
 for line in f:
     tokens = line.split(',')
     for i in range(len(tokens)):
@@ -76,3 +76,5 @@ display(pictures[random.randint(0, NUMTEST - 1)])
 running = True
 while running:
     pg.time.wait(100 if display(pictures[random.randint(0, NUMTEST - 1)]) else 1000)
+    if pg.event.peek(pg.QUIT):
+        running = False

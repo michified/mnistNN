@@ -8,7 +8,6 @@
 #include <chrono>
 #include <cmath>
 #pragma GCC optimize("Ofast")
-#pragma GCC target("avx,avx2,fma")
 #define endl "\n"
 using namespace std;
 
@@ -22,11 +21,12 @@ public:
     double vals[RES * RES];
 };
 
-Picture testData[NUMTEST];
+vector<Picture> testData;
 
 void readData() {
     ifstream cin2("data/mnist_test.txt");
     cout << "Reading data..." << endl;
+    testData.resize(NUMTEST);
     int i, k;
     string val, inp;
     for (k = 0; k < NUMTEST; k++) {
@@ -36,7 +36,7 @@ void readData() {
         testData[k].label = stoi(val);
         for (i = 0; i < RES * RES; i++) {
             getline(ss, val, ',');
-            testData[k].vals[i] = (double) stoi(val);
+            testData[k].vals[i] = stoi(val) / 255.0;
         }
     }
     cin2.close();
@@ -59,7 +59,8 @@ public:
 
     void computeVal(bool clamp) {
         z = bias;
-        for (auto& connection : connections) z += connection.first * connection.second->a;
+        for (auto& connection : connections) 
+            z += connection.first * connection.second->a;
         a = clamp ? ReLU(z) : z;
     }
 };
@@ -76,58 +77,87 @@ public:
 
 vector<Layer> layers;
 
+vector<double> softmax() {
+    vector<double> res(OUTPUTS);
+    double max_val = *max_element(&layers[LAYERS+1].neurons[0].z, 
+                                 &layers[LAYERS+1].neurons[OUTPUTS].z);
+    double tot = 0;
+    for (int i = 0; i < OUTPUTS; i++) {
+        res[i] = exp(layers[LAYERS + 1].neurons[i].z - max_val);
+        tot += res[i];
+    }
+    for (int i = 0; i < OUTPUTS; i++) {
+        res[i] /= tot;
+    }
+    return res;
+}
+
 void initLayers() {
     cout << "Creating the neural net..." << endl;
-    ifstream cin2("scripts/model.txt");
+    ifstream cin2("model.txt");
+    if (not cin2.is_open()) {
+        cerr << "Error: Could not open model file!" << endl;
+        exit(1);
+    }
+
     cin2 >> LAYERS >> LAYERSIZE;
     layers.resize(LAYERS + 2);
-    int prev = RES * RES, i, j, k;
+    
+    int prev = RES * RES;
     layers[0].init(prev, 0);
-    for (i = 1; i <= LAYERS; i++) {
+    
+    for (int i = 1; i <= LAYERS; i++) {
         layers[i].init(LAYERSIZE, prev);
         for (auto& neuron : layers[i].neurons) {
-            for (j = 0; j < prev; j++) neuron.connections[j].second = &layers[i - 1].neurons[j];
+            for (int j = 0; j < prev; j++) {
+                neuron.connections[j].second = &layers[i-1].neurons[j];
+            }
         }
         prev = LAYERSIZE;
     }
+    
     layers[LAYERS + 1].init(OUTPUTS, prev);
     for (auto& neuron : layers[LAYERS + 1].neurons) {
-        for (j = 0; j < prev; j++) neuron.connections[j].second = &layers[LAYERS].neurons[j];
-    }
-    cout << "Neural net created." << endl;
-
-    cout << "Importing network..." << endl;
-    for (i = 1; i <= LAYERS + 1; i++) {
-        for (j = 0; j < (i == LAYERS + 1 ? OUTPUTS : LAYERSIZE); j++) {
-            for (k = 0; k < (i == 1 ? RES * RES : LAYERSIZE); k++) {
-                cin2 >> layers[i].neurons[j].connections[k].first;
-            }
-            cin2 >> layers[i].neurons[j].bias;
+        for (int j = 0; j < prev; j++) {
+            neuron.connections[j].second = &layers[LAYERS].neurons[j];
         }
     }
+
+    for (int l = 1; l <= LAYERS + 1; l++) {
+        int currentSize = (l == LAYERS + 1) ? OUTPUTS : LAYERSIZE;
+        int prevSize = (l == 1) ? RES * RES : LAYERSIZE;
+        
+        for (int n = 0; n < currentSize; n++) {
+            for (int p = 0; p < prevSize; p++) {
+                if (not (cin2 >> layers[l].neurons[n].connections[p].first)) {
+                    cerr << "Error reading weights at layer " << l 
+                         << ", neuron " << n << ", connection " << p << endl;
+                    exit(1);
+                }
+            }
+
+            if (not (cin2 >> layers[l].neurons[n].bias)) {
+                cerr << "Error reading bias at layer " << l 
+                     << ", neuron " << n << endl;
+                exit(1);
+            }
+        }
+    }
+    
+    string dummy;
+    if (cin2 >> dummy) {
+        cerr << "Warning: Extra data in model file!" << endl;
+    }
+    
     cin2.close();
-    cout << "Network imported." << endl;
-}
-
-double dReLU(double x) {
-    return x > 0;
-}
-
-vector<double> softmax() {
-    vector<double> res(OUTPUTS);
-    double tot = 0;
-    for (int i = 0; i < OUTPUTS; i++) tot += exp(layers[LAYERS + 1].neurons[i].z);
-    for (int i = 0; i < OUTPUTS; i++) res[i] = exp(layers[LAYERS + 1].neurons[i].z) / tot;
-    return res;
+    cout << "Network imported successfully." << endl;
 }
 
 void computeBatch() {
     cout << "Testing..." << endl;
-    remove("scripts/preds.txt");
-    ofstream cout2("scripts/preds.txt");
-    int i, j, k, correct = 0, hiLabel;
-    double hi;
-    double totCost = 0;
+    remove("preds.txt");
+    ofstream cout2("preds.txt");
+    int i, j, k, correct = 0;
     Picture* picture;
     
     auto totalStart = chrono::high_resolution_clock::now();
@@ -137,20 +167,36 @@ void computeBatch() {
         
         auto predStart = chrono::high_resolution_clock::now();
         
-        for (i = 0; i < RES * RES; i++) layers[0].neurons[i].a = picture->vals[i];
+        for (i = 0; i < RES * RES; i++) 
+            layers[0].neurons[i].a = picture->vals[i];
+        
         for (i = 1; i <= LAYERS; i++) {
-            for (j = 0; j < LAYERSIZE; j++) layers[i].neurons[j].computeVal(true);
+            for (j = 0; j < LAYERSIZE; j++) 
+                layers[i].neurons[j].computeVal(true);
         }
-        for (i = 0; i < OUTPUTS; i++) layers[LAYERS + 1].neurons[i].computeVal(false);
+        
+        for (i = 0; i < OUTPUTS; i++) 
+            layers[LAYERS + 1].neurons[i].computeVal(false);
+
         auto predictions = softmax();
         
         auto predEnd = chrono::high_resolution_clock::now();
         totalPredictionTime += chrono::duration_cast<chrono::microseconds>(predEnd - predStart).count();
         
         for (double conf : predictions) {
-            cout2 << fixed << setprecision(2) << conf << ' ';
+            cout2 << fixed << setprecision(4) << conf << ' ';
         }
         cout2 << endl;
+        
+        int prediction = 0;
+        double max_conf = predictions[0];
+        for (i = 1; i < OUTPUTS; i++) {
+            if (predictions[i] > max_conf) {
+                max_conf = predictions[i];
+                prediction = i;
+            }
+        }
+        correct += (prediction == picture->label);
     }
     cout2.close();
     
@@ -160,15 +206,14 @@ void computeBatch() {
     
     cout << "Testing finished in " << totalDuration << " ms" << endl;
     cout << "Average prediction time per image: " << avgPredictionTime << " microseconds" << endl;
+    cout << "Accuracy: " << fixed << setprecision(2) 
+         << (correct * 100.0 / NUMTEST) << "%" << endl;
 }
 
 int main() {
-    // ios_base::sync_with_stdio(false);
-    // cin.tie(nullptr);
-
     readData();
     initLayers();
     computeBatch();
-    system("display.py");
+    system("python display.py");
     return 0;
 }

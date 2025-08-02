@@ -7,27 +7,25 @@
 #include <iomanip>
 #include <chrono>
 #include <cmath>
-#define endl "\n"
 #pragma GCC optimize("Ofast")
-#pragma GCC target("avx,avx2,fma")
+#define endl "\n"
 using namespace std;
 
 const int RES = 28;
 const int NUMTRAIN = 12000;
 const int TRAINFILES = 5;
 const int NUMTEST = 10000;
-const int EPOCHS = 10;
+const int EPOCHS = 50;
 const int BATCHSIZE = 500;
 const int LAYERS = 2;
 const int LAYERSIZE = 50;
 const int OUTPUTS = 10;
-const double LEARNINGRATE = 0.001;
+const double LEARNINGRATE = 0.0002;
 const double DECAY1 = 0.99;
 const double DECAY2 = 0.999;
 const double DELTA = 0.00000001;
 static random_device rd;
 static mt19937 gen(rd());
-normal_distribution<double> d(0, (double) 2 / (RES * RES));
 auto rng = default_random_engine {rd()};
 
 class Picture {
@@ -36,11 +34,14 @@ public:
     double vals[RES * RES];
 };
 
-vector<Picture> trainData(NUMTRAIN * TRAINFILES), testData(NUMTEST);
+vector<Picture> trainData, testData;
 
 void readData() {
     cout << "Reading data..." << endl;
-    int i, k, tmp;
+    trainData.resize(NUMTRAIN * TRAINFILES);
+    testData.resize(NUMTEST);
+    
+    int i, k;
     string inp, val;
     for (int f = 0; f < TRAINFILES; f++) {
         ifstream cin("data/mnist_train" + to_string(f + 1) + ".txt");
@@ -51,7 +52,7 @@ void readData() {
             trainData[k].label = stoi(val);
             for (i = 0; i < RES * RES; i++) {
                 getline(ss, val, ',');
-                trainData[k].vals[i] = (double) stoi(val);
+                trainData[k].vals[i] = stoi(val) / 255.0;  // Normalize input
             }
         }
         cin.close();
@@ -65,7 +66,7 @@ void readData() {
         testData[k].label = stoi(val);
         for (i = 0; i < RES * RES; i++) {
             getline(ss, val, ',');
-            testData[k].vals[i] = (double) stoi(val);
+            testData[k].vals[i] = stoi(val) / 255.0;
         }
     }
     cin2.close();
@@ -80,18 +81,24 @@ public:
 
     void init(int prevN) {
         connections.resize(prevN);
-        for (auto& connection : connections) connection.first = d(gen);
-        bias = 0;
+        double stddev = sqrt(2.0 / prevN);
+        normal_distribution<double> d(0, stddev);
+        for (auto& connection : connections) {
+            connection.first = d(gen);
+        }
+        bias = 0.01; 
     }
 
     double ReLU(double x) {
         return max(0.0, x);
     }
 
-    void computeVal(bool clamp) {
+    void computeVal(bool applyActivation) {
         z = bias;
-        for (auto& connection : connections) z += connection.first * connection.second->a;
-        a = clamp ? ReLU(z) : z;
+        for (auto& connection : connections) {
+            z += connection.first * connection.second->a;
+        }
+        a = applyActivation ? ReLU(z) : z;
     }
 };
 
@@ -101,7 +108,9 @@ public:
 
     void init(int n, int prevN) {
         neurons.resize(n);
-        for (int i = 0; i < n; i++) neurons[i].init(prevN);
+        for (int i = 0; i < n; i++) {
+            neurons[i].init(prevN);
+        }
     }
 };
 
@@ -111,18 +120,24 @@ void initLayers() {
     cout << "Creating the neural net..." << endl;
     auto start = chrono::high_resolution_clock::now();
     
-    int prev = RES * RES, i, j;
+    int prev = RES * RES;
     layers[0].init(prev, 0);
-    for (i = 1; i <= LAYERS; i++) {
+    
+    for (int i = 1; i <= LAYERS; i++) {
         layers[i].init(LAYERSIZE, prev);
-        for (auto& neuron : layers[i].neurons) {
-            for (j = 0; j < prev; j++) neuron.connections[j].second = &layers[i - 1].neurons[j];
+        for (int j = 0; j < LAYERSIZE; j++) {
+            for (int k = 0; k < prev; k++) {
+                layers[i].neurons[j].connections[k].second = &layers[i - 1].neurons[k];
+            }
         }
         prev = LAYERSIZE;
     }
+    
     layers[LAYERS + 1].init(OUTPUTS, prev);
-    for (auto& neuron : layers[LAYERS + 1].neurons) {
-        for (j = 0; j < prev; j++) neuron.connections[j].second = &layers[LAYERS].neurons[j];
+    for (int j = 0; j < OUTPUTS; j++) {
+        for (int k = 0; k < prev; k++) {
+            layers[LAYERS + 1].neurons[j].connections[k].second = &layers[LAYERS].neurons[k];
+        }
     }
     
     auto end = chrono::high_resolution_clock::now();
@@ -131,79 +146,120 @@ void initLayers() {
 }
 
 double dReLU(double x) {
-    return x > 0;
+    return x > 0 ? 1.0 : 0.0;
 }
 
 vector<double> softmax() {
     vector<double> res(OUTPUTS);
+    double max_val = *max_element(&layers[LAYERS + 1].neurons[0].z, &layers[LAYERS + 1].neurons[OUTPUTS].z);
     double tot = 0;
-    for (int i = 0; i < OUTPUTS; i++) tot += exp(layers[LAYERS + 1].neurons[i].z);
-    for (int i = 0; i < OUTPUTS; i++) res[i] = exp(layers[LAYERS + 1].neurons[i].z) / tot;
+    for (int i = 0; i < OUTPUTS; i++) {
+        res[i] = exp(layers[LAYERS + 1].neurons[i].z - max_val);
+        tot += res[i];
+    }
+    for (int i = 0; i < OUTPUTS; i++) {
+        res[i] /= tot;
+    }
     return res;
 }
 
-vector<pair<vector<int>, double>> connectionGrads; // layerR, neuronL, neuronR, change
-vector<pair<pair<int, int>, double>> biasGrads; // layer, neuron, change
-vector<pair<double, double>> connectionGradsAdam, biasGradsAdam; // mean, var
-int tCG, tBG;
-double decay1PowT = 1, decay2PowT = 1;
+vector<vector<vector<double>>> weightGrads;
+vector<vector<double>> biasGrads;
+vector<vector<vector<double>>> weightAdamM, weightAdamV;
+vector<vector<double>> biasAdamM, biasAdamV;
 
-void backpropagate(int layer, vector<double> d) {
-    int prev, neuron;
-    for (neuron = 0; neuron < (layer <= LAYERS ? LAYERSIZE : OUTPUTS); neuron++) {
-        for (prev = 0; prev < (layer > 1 ? LAYERSIZE : RES * RES); prev++) {
-            if (tCG == connectionGrads.size()) connectionGrads.push_back({{layer, prev, neuron}, 0.0});
-            if (tCG == connectionGradsAdam.size()) connectionGradsAdam.push_back({0.0, 0.0});
-            connectionGrads[tCG].second += d[neuron] * layers[layer - 1].neurons[prev].a;
-            tCG++;
-        }
-        if (tBG == biasGrads.size()) biasGrads.push_back({{layer, neuron}, 0.0});
-        if (tBG == biasGradsAdam.size()) biasGradsAdam.push_back({0.0, 0.0});
-        biasGrads[tBG].second += d[neuron];
-        tBG++;
+void initializeGradStorage() {
+    weightGrads.resize(LAYERS + 2);
+    biasGrads.resize(LAYERS + 2);
+    weightAdamM.resize(LAYERS + 2);
+    weightAdamV.resize(LAYERS + 2);
+    biasAdamM.resize(LAYERS + 2);
+    biasAdamV.resize(LAYERS + 2);
+    
+    for (int l = 1; l <= LAYERS + 1; l++) {
+        int currentSize = (l <= LAYERS) ? LAYERSIZE : OUTPUTS;
+        int prevSize = (l == 1) ? RES * RES : LAYERSIZE;
+        
+        weightGrads[l].resize(currentSize, vector<double>(prevSize, 0.0));
+        biasGrads[l].resize(currentSize, 0.0);
+        weightAdamM[l].resize(currentSize, vector<double>(prevSize, 0.0));
+        weightAdamV[l].resize(currentSize, vector<double>(prevSize, 0.0));
+        biasAdamM[l].resize(currentSize, 0.0);
+        biasAdamV[l].resize(currentSize, 0.0);
     }
+}
+
+void backpropagate(int layer, const vector<double>& d) {
+    int currentSize = (layer <= LAYERS) ? LAYERSIZE : OUTPUTS;
+    int prevSize = (layer == 1) ? RES * RES : LAYERSIZE;
+    
+    for (int n = 0; n < currentSize; n++) {
+        biasGrads[layer][n] += d[n];
+        for (int p = 0; p < prevSize; p++) {
+            weightGrads[layer][n][p] += d[n] * layers[layer - 1].neurons[p].a;
+        }
+    }
+    
     if (layer == 1) return;
-    vector<double> newd(LAYERSIZE);
-    for (prev = 0; prev < (layer > 1 ? LAYERSIZE : RES * RES); prev++) {
-        for (neuron = 0; neuron < (layer <= LAYERS ? LAYERSIZE : OUTPUTS); neuron++) {
-            newd[prev] += d[neuron] * (layer == LAYERS + 1 ? 1 : dReLU(layers[layer].neurons[neuron].z)) * layers[layer].neurons[neuron].connections[prev].first;
+
+    vector<double> newd(prevSize, 0.0);
+    for (int p = 0; p < prevSize; p++) {
+        for (int n = 0; n < currentSize; n++) {
+            double grad_factor = (layer - 1 == 0) ? 1.0 : dReLU(layers[layer - 1].neurons[p].z);
+            newd[p] += d[n] * layers[layer].neurons[n].connections[p].first * grad_factor;
         }
     }
+    
     backpropagate(layer - 1, newd);
 }
 
-int computeBatch(bool train, int batchSize) {
-    int i, j, k, correct = 0, hiLabel;
-    double hi;
-    double totCost = 0;
-    Picture* picture;
-    vector<double> d(OUTPUTS), softA;
-    for (k = 0; k < batchSize; k++) {
-        picture = train ? &trainData[k] : &testData[k];
-        for (i = 0; i < RES * RES; i++) layers[0].neurons[i].a = picture->vals[i];
-        for (i = 1; i <= LAYERS; i++) {
-            for (j = 0; j < LAYERSIZE; j++) layers[i].neurons[j].computeVal(true);
+int computeBatch(bool train, int batchSize, int start_idx) {
+    int correct = 0;
+    vector<double> d(OUTPUTS, 0.0);
+
+    for (int k = 0; k < batchSize; k++) {
+        Picture* picture = &trainData[start_idx + k];
+
+        for (int i = 0; i < RES * RES; i++) {
+            layers[0].neurons[i].a = picture->vals[i];
         }
-        hi = -1;
-        hiLabel = 0;
-        for (i = 0; i < OUTPUTS; i++) {
-            layers[LAYERS + 1].neurons[i].computeVal(false);
-        }
-        softA = softmax();
-        for (i = 0; i < OUTPUTS; i++) {
-            if (train) d[i] = softA[i] - (picture->label == i);
-            if (softA[i] > hi) {
-                hi = softA[i];
-                hiLabel = i;
+        
+        for (int l = 1; l <= LAYERS; l++) {
+            for (int n = 0; n < LAYERSIZE; n++) {
+                layers[l].neurons[n].computeVal(true);
             }
         }
-        correct += hiLabel == picture->label;
+        
+        for (int i = 0; i < OUTPUTS; i++) {
+            layers[LAYERS + 1].neurons[i].computeVal(false);
+        }
+        
+        vector<double> softA = softmax();
+        int prediction = 0;
+        double max_prob = softA[0];
+        for (int i = 1; i < OUTPUTS; i++) {
+            if (softA[i] > max_prob) {
+                max_prob = softA[i];
+                prediction = i;
+            }
+        }
+        
+        correct += (prediction == picture->label);
+        
         if (train) {
-            tCG = 0;
-            tBG = 0;
+            for (int i = 0; i < OUTPUTS; i++) {
+                d[i] = softA[i] - (picture->label == i ? 1.0 : 0.0);
+            }
+            
+            for (int l = 1; l <= LAYERS + 1; l++) {
+                fill(biasGrads[l].begin(), biasGrads[l].end(), 0.0);
+                for (auto& wg : weightGrads[l]) {
+                    fill(wg.begin(), wg.end(), 0.0);
+                }
+            }
+
             backpropagate(LAYERS + 1, d);
         }
-        fill(d.begin(), d.end(), 0);
     }
     return correct;
 }
@@ -211,49 +267,64 @@ int computeBatch(bool train, int batchSize) {
 void trainNetwork() {
     cout << "Training the neural net..." << endl;
     auto totalStart = chrono::high_resolution_clock::now();
+    int totalTrain = NUMTRAIN * TRAINFILES;
+    int totalBatches = totalTrain / BATCHSIZE;
+    
+    double decay1T = DECAY1;
+    double decay2T = DECAY2;
+    
     for (int epoch = 1; epoch <= EPOCHS; epoch++) {
         auto epochStart = chrono::high_resolution_clock::now();
         shuffle(trainData.begin(), trainData.end(), rng);
-        double totCorrectTrain = 0, totCorrectTest = 0;
-        for (int batch = 0; batch < NUMTRAIN * TRAINFILES / BATCHSIZE; batch++) {
-            cout << batch << "\n";
-            double biasCorrectedMean, biasCorrectedVar;
-            totCorrectTrain += computeBatch(true, BATCHSIZE);
-            for (int i = 0; i < connectionGrads.size(); i++) {
-                auto& connectionGrad = connectionGrads[i];
-                auto& connectionGradAdam = connectionGradsAdam[i];
-                connectionGrad.second /= BATCHSIZE;
-                connectionGradAdam.first = connectionGradAdam.first * DECAY1 + connectionGrad.second * (1 - DECAY1);
-                connectionGradAdam.second = connectionGradAdam.second * DECAY2 + connectionGrad.second * connectionGrad.second * (1 - DECAY2);
-                biasCorrectedMean = connectionGradAdam.first / (1 - decay1PowT);
-                biasCorrectedVar = connectionGradAdam.second / (1 - decay2PowT);
-                layers[connectionGrad.first[0]].neurons[connectionGrad.first[2]].connections[connectionGrad.first[1]].first -= LEARNINGRATE * (biasCorrectedMean / ((sqrt(biasCorrectedVar)) + DELTA));
-                connectionGrad.second = 0;
+        
+        double totCorrectTrain = 0;
+        double totCorrectTest = 0;
+        
+        for (int batch = 0; batch < totalBatches; batch++) {
+            int start_idx = batch * BATCHSIZE;
+            totCorrectTrain += computeBatch(true, BATCHSIZE, start_idx);
+
+            for (int l = 1; l <= LAYERS + 1; l++) {
+                int currentSize = (l <= LAYERS) ? LAYERSIZE : OUTPUTS;
+                int prevSize = (l == 1) ? RES * RES : LAYERSIZE;
+                
+                for (int n = 0; n < currentSize; n++) {
+                    double bg = biasGrads[l][n] / BATCHSIZE;
+                    biasAdamM[l][n] = DECAY1 * biasAdamM[l][n] + (1 - DECAY1) * bg;
+                    biasAdamV[l][n] = DECAY2 * biasAdamV[l][n] + (1 - DECAY2) * bg * bg;
+                    
+                    double m_hat = biasAdamM[l][n] / (1 - decay1T);
+                    double v_hat = biasAdamV[l][n] / (1 - decay2T);
+                    
+                    layers[l].neurons[n].bias -= LEARNINGRATE * m_hat / (sqrt(v_hat) + DELTA);
+
+                    for (int p = 0; p < prevSize; p++) {
+                        double wg = weightGrads[l][n][p] / BATCHSIZE;
+                        weightAdamM[l][n][p] = DECAY1 * weightAdamM[l][n][p] + (1 - DECAY1) * wg;
+                        weightAdamV[l][n][p] = DECAY2 * weightAdamV[l][n][p] + (1 - DECAY2) * wg * wg;
+                        
+                        m_hat = weightAdamM[l][n][p] / (1 - decay1T);
+                        v_hat = weightAdamV[l][n][p] / (1 - decay2T);
+                        
+                        layers[l].neurons[n].connections[p].first -= LEARNINGRATE * m_hat / (sqrt(v_hat) + DELTA);
+                    }
+                }
             }
-            for (int i = 0; i < biasGrads.size(); i++) {
-                auto& biasGrad = biasGrads[i];
-                auto& biasGradAdam = biasGradsAdam[i];
-                biasGrad.second /= BATCHSIZE;
-                biasGradAdam.first = biasGradAdam.first * DECAY1 + biasGrad.second * (1 - DECAY1);
-                biasGradAdam.second = biasGradAdam.second * DECAY2 + biasGrad.second * biasGrad.second * (1 - DECAY2);
-                biasCorrectedMean = biasGradAdam.first / (1 - decay1PowT);
-                biasCorrectedVar = biasGradAdam.second / (1 - decay2PowT);
-                layers[biasGrad.first.first].neurons[biasGrad.first.second].bias -= LEARNINGRATE * (biasCorrectedMean / ((sqrt(biasCorrectedVar)) + DELTA));
-                biasGrad.second = 0;
-            }
-            rotate(trainData.begin(), trainData.begin() + BATCHSIZE, trainData.end());
+            
+            decay1T *= DECAY1;
+            decay2T *= DECAY2;
         }
-        decay1PowT *= DECAY1;
-        decay2PowT *= DECAY2;
-        // cout << "Testing..." << endl;
-        totCorrectTest = computeBatch(false, NUMTEST);
+
+        totCorrectTest = computeBatch(false, NUMTEST, 0);
+        
         auto epochEnd = chrono::high_resolution_clock::now();
         auto epochDuration = chrono::duration_cast<chrono::seconds>(epochEnd - epochStart);
         
-        cout << "Epoch #" + to_string(epoch) + " complete in " << epochDuration.count() << " seconds." << endl;
-        cout << "Training data accuracy: " + to_string(totCorrectTrain / (NUMTRAIN * TRAINFILES) * 100).substr(0, 5) + "%." << endl;
-        cout << "Testing data accuracy: " + to_string(totCorrectTest / NUMTEST * 100).substr(0, 5) + "%." << endl;
+        cout << "Epoch #" << epoch << " complete in " << epochDuration.count() << " seconds." << endl;
+        cout << "Training data accuracy: " << fixed << setprecision(2) << (totCorrectTrain / totalTrain) * 100 << "%" << endl;
+        cout << "Testing data accuracy: " << fixed << setprecision(2) << (totCorrectTest / (double)NUMTEST) * 100 << "%" << endl;
     }
+    
     auto totalEnd = chrono::high_resolution_clock::now();
     auto totalDuration = chrono::duration_cast<chrono::seconds>(totalEnd - totalStart);
     cout << "Training complete in " << totalDuration.count() << " seconds." << endl;
@@ -263,14 +334,18 @@ void exportNetwork() {
     remove("model.txt");
     cout << "Exporting network..." << endl;
     ofstream cout2("model.txt");
+    
     cout2 << LAYERS << ' ' << LAYERSIZE << endl;
-    int i, j, k;
-    for (i = 1; i <= LAYERS + 1; i++) {
-        for (j = 0; j < (i == LAYERS + 1 ? OUTPUTS : LAYERSIZE); j++) {
-            for (k = 0; k < (i == 1 ? RES * RES : LAYERSIZE); k++) {
-                cout2 << fixed << setprecision(30) << layers[i].neurons[j].connections[k].first << endl;
+    
+    for (int l = 1; l <= LAYERS + 1; l++) {
+        int currentSize = (l == LAYERS + 1) ? OUTPUTS : LAYERSIZE;
+        int prevSize = (l == 1) ? RES * RES : LAYERSIZE;
+        
+        for (int n = 0; n < currentSize; n++) {
+            for (int p = 0; p < prevSize; p++) {
+                cout2 << fixed << setprecision(15) << layers[l].neurons[n].connections[p].first << endl;
             }
-            cout2 << fixed << setprecision(30) << layers[i].neurons[j].bias << endl;
+            cout2 << fixed << setprecision(15) << layers[l].neurons[n].bias << endl;
         }
     }
     cout2.close();
@@ -278,11 +353,9 @@ void exportNetwork() {
 }
 
 int main() {
-    // ios_base::sync_with_stdio(false);
-    // cin.tie(nullptr);
-
     readData();
     initLayers();
+    initializeGradStorage();  // Initialize gradient storage
     trainNetwork();
     exportNetwork();
     return 0;
