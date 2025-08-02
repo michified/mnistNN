@@ -1,4 +1,12 @@
-#include <bits/stdc++.h>
+#include <iostream>
+#include <random>
+#include <vector>
+#include <algorithm>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
+#include <chrono>
+#include <cmath>
 #define endl "\n"
 #pragma GCC optimize("Ofast")
 #pragma GCC target("avx,avx2,fma")
@@ -35,7 +43,7 @@ void readData() {
     int i, k, tmp;
     string inp, val;
     for (int f = 0; f < TRAINFILES; f++) {
-        ifstream cin("mnist_train" + to_string(f + 1) + ".txt");
+        ifstream cin("data/mnist_train" + to_string(f + 1) + ".txt");
         for (k = f * NUMTRAIN; k < (f + 1) * NUMTRAIN; k++) {
             cin >> inp;
             stringstream ss(inp);
@@ -49,7 +57,7 @@ void readData() {
         cin.close();
     }
 
-    ifstream cin2("mnist_test.txt");
+    ifstream cin2("data/mnist_test.txt");
     for (k = 0; k < NUMTEST; k++) {
         cin2 >> inp;
         stringstream ss(inp);
@@ -101,6 +109,8 @@ vector<Layer> layers(LAYERS + 2);
 
 void initLayers() {
     cout << "Creating the neural net..." << endl;
+    auto start = chrono::high_resolution_clock::now();
+    
     int prev = RES * RES, i, j;
     layers[0].init(prev, 0);
     for (i = 1; i <= LAYERS; i++) {
@@ -114,7 +124,10 @@ void initLayers() {
     for (auto& neuron : layers[LAYERS + 1].neurons) {
         for (j = 0; j < prev; j++) neuron.connections[j].second = &layers[LAYERS].neurons[j];
     }
-    cout << "Neural net created." << endl;
+    
+    auto end = chrono::high_resolution_clock::now();
+    auto duration = chrono::duration_cast<chrono::milliseconds>(end - start);
+    cout << "Neural net created in " << duration.count() << " milliseconds." << endl;
 }
 
 double dReLU(double x) {
@@ -197,7 +210,9 @@ int computeBatch(bool train, int batchSize) {
 
 void trainNetwork() {
     cout << "Training the neural net..." << endl;
+    auto totalStart = chrono::high_resolution_clock::now();
     for (int epoch = 1; epoch <= EPOCHS; epoch++) {
+        auto epochStart = chrono::high_resolution_clock::now();
         shuffle(trainData.begin(), trainData.end(), rng);
         double totCorrectTrain = 0, totCorrectTest = 0;
         for (int batch = 0; batch < NUMTRAIN * TRAINFILES / BATCHSIZE; batch++) {
@@ -232,11 +247,16 @@ void trainNetwork() {
         decay2PowT *= DECAY2;
         // cout << "Testing..." << endl;
         totCorrectTest = computeBatch(false, NUMTEST);
-        cout << "Epoch #" + to_string(epoch) + " complete." << endl;
+        auto epochEnd = chrono::high_resolution_clock::now();
+        auto epochDuration = chrono::duration_cast<chrono::seconds>(epochEnd - epochStart);
+        
+        cout << "Epoch #" + to_string(epoch) + " complete in " << epochDuration.count() << " seconds." << endl;
         cout << "Training data accuracy: " + to_string(totCorrectTrain / (NUMTRAIN * TRAINFILES) * 100).substr(0, 5) + "%." << endl;
         cout << "Testing data accuracy: " + to_string(totCorrectTest / NUMTEST * 100).substr(0, 5) + "%." << endl;
     }
-    cout << "Training complete." << endl;
+    auto totalEnd = chrono::high_resolution_clock::now();
+    auto totalDuration = chrono::duration_cast<chrono::seconds>(totalEnd - totalStart);
+    cout << "Training complete in " << totalDuration.count() << " seconds." << endl;
 }
 
 void exportNetwork() {

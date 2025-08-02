@@ -1,4 +1,14 @@
-#include <bits/stdc++.h>
+#include <iostream>
+#include <random>
+#include <vector>
+#include <algorithm>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
+#include <chrono>
+#include <cmath>
+#pragma GCC optimize("Ofast")
+#pragma GCC target("avx,avx2,fma")
 #define endl "\n"
 using namespace std;
 
@@ -15,7 +25,7 @@ public:
 Picture testData[NUMTEST];
 
 void readData() {
-    ifstream cin2("mnist_test.txt");
+    ifstream cin2("data/mnist_test.txt");
     cout << "Reading data..." << endl;
     int i, k;
     string val, inp;
@@ -68,7 +78,7 @@ vector<Layer> layers;
 
 void initLayers() {
     cout << "Creating the neural net..." << endl;
-    ifstream cin2("model.txt");
+    ifstream cin2("scripts/model.txt");
     cin2 >> LAYERS >> LAYERSIZE;
     layers.resize(LAYERS + 2);
     int prev = RES * RES, i, j, k;
@@ -113,26 +123,43 @@ vector<double> softmax() {
 
 void computeBatch() {
     cout << "Testing..." << endl;
-    remove("preds.txt");
-    ofstream cout2("preds.txt");
+    remove("scripts/preds.txt");
+    ofstream cout2("scripts/preds.txt");
     int i, j, k, correct = 0, hiLabel;
     double hi;
     double totCost = 0;
     Picture* picture;
+    
+    auto totalStart = chrono::high_resolution_clock::now();
+    long long totalPredictionTime = 0;
     for (k = 0; k < NUMTEST; k++) {
         picture = &testData[k];
+        
+        auto predStart = chrono::high_resolution_clock::now();
+        
         for (i = 0; i < RES * RES; i++) layers[0].neurons[i].a = picture->vals[i];
         for (i = 1; i <= LAYERS; i++) {
             for (j = 0; j < LAYERSIZE; j++) layers[i].neurons[j].computeVal(true);
         }
         for (i = 0; i < OUTPUTS; i++) layers[LAYERS + 1].neurons[i].computeVal(false);
-        for (double conf : softmax()) {
+        auto predictions = softmax();
+        
+        auto predEnd = chrono::high_resolution_clock::now();
+        totalPredictionTime += chrono::duration_cast<chrono::microseconds>(predEnd - predStart).count();
+        
+        for (double conf : predictions) {
             cout2 << fixed << setprecision(2) << conf << ' ';
         }
         cout2 << endl;
     }
     cout2.close();
-    cout << "Testing finished." << endl;
+    
+    auto totalEnd = chrono::high_resolution_clock::now();
+    auto totalDuration = chrono::duration_cast<chrono::milliseconds>(totalEnd - totalStart).count();
+    double avgPredictionTime = static_cast<double>(totalPredictionTime) / NUMTEST;
+    
+    cout << "Testing finished in " << totalDuration << " ms" << endl;
+    cout << "Average prediction time per image: " << avgPredictionTime << " microseconds" << endl;
 }
 
 int main() {
