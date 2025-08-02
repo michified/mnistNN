@@ -52,7 +52,7 @@ void readData() {
             trainData[k].label = stoi(val);
             for (i = 0; i < RES * RES; i++) {
                 getline(ss, val, ',');
-                trainData[k].vals[i] = stoi(val) / 255.0;  // Normalize input
+                trainData[k].vals[i] = stoi(val) / 255.0;
             }
         }
         cin.close();
@@ -355,7 +355,7 @@ void exportNetwork() {
 int main() {
     readData();
     initLayers();
-    initializeGradStorage();  // Initialize gradient storage
+    initializeGradStorage();
     trainNetwork();
     exportNetwork();
     return 0;
