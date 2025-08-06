@@ -93,6 +93,7 @@
 #### Environment Requirements
 - Python 3.12+
 - NumPy package
+- Pygame package
 - GCC 12+ (`-std=c++23`)
 - CMake 3.15+ (optional, for building from source)
 

@@ -1,8 +1,5 @@
 import pygame
 import numpy as np
-import asyncio
-import platform
-import math
 
 GRID_SIZE = 18
 CELL_SIZE = 40 
