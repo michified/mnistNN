@@ -74,10 +74,17 @@
    ```bash
    g++ test.c++ -o test.exe
    ```
-6. Run the testing program to evaluate and visualize results:
+   Run the testing program to evaluate and visualize results:
    ```bash
    ./test.exe
    ```
+   or
+   Try the digit classifier by clicking and drawing:
+   ```bash
+   python classifier.py
+   ```
+   It is recommended that your drawings fill a large part of the window for best results
+   Note: The model does not classify 8s too well, and, to a lesser extent, 2s and 3s
 
 ### Dependencies
 #### System Requirements
