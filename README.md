@@ -84,7 +84,7 @@
    python classifier.py
    ```
    It is recommended that your drawings fill a large part of the window for best results
-   Note: The model does not classify 8s too well, and, to a lesser extent, 2s and 3s
+   Note: The model does not classify 5s and 8s too well, and, to a lesser extent, 2s and 3s
 
 ### Dependencies
 #### System Requirements
