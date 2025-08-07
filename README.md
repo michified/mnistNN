@@ -86,8 +86,8 @@
    ```bash
    python classifier.py
    ```
-   It is recommended that your drawings are centered, upward-oriented, and not too small for best results
-   Note: The model does not classify 0s very well
+   - It is recommended that your drawings are centered, upward-oriented, and not too small for best results
+   - Note: The model does not classify 0s very well
 
 ### Dependencies
 #### System Requirements
@@ -108,3 +108,4 @@
 - Adam optimization. https://www.geeksforgeeks.org/deep-learning/adam-optimizer/
 
 - eMNIST dataset. https://www.kaggle.com/datasets/crawford/emnist 
+
