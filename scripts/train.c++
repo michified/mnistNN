@@ -12,10 +12,9 @@
 using namespace std;
 
 const int RES = 28;
-const int NUMTRAIN = 12000;
-const int TRAINFILES = 5;
-const int NUMTEST = 10000;
-const int EPOCHS = 50;
+const int NUMTRAIN = 240000;
+const int NUMTEST = 60000;
+const int EPOCHS = 30;
 const int BATCHSIZE = 500;
 const int LAYERS = 2;
 const int LAYERSIZE = 50;
@@ -38,27 +37,25 @@ vector<Picture> trainData, testData;
 
 void readData() {
     cout << "Reading data..." << endl;
-    trainData.resize(NUMTRAIN * TRAINFILES);
+    trainData.resize(NUMTRAIN);
     testData.resize(NUMTEST);
     
     int i, k;
     string inp, val;
-    for (int f = 0; f < TRAINFILES; f++) {
-        ifstream cin("data/mnist_train" + to_string(f + 1) + ".txt");
-        for (k = f * NUMTRAIN; k < (f + 1) * NUMTRAIN; k++) {
-            cin >> inp;
-            stringstream ss(inp);
+    ifstream cin("data/emnist-digits-train.txt");
+    for (k = 0; k < NUMTRAIN; k++) {
+        cin >> inp;
+        stringstream ss(inp);
+        getline(ss, val, ',');
+        trainData[k].label = stoi(val);
+        for (i = 0; i < RES * RES; i++) {
             getline(ss, val, ',');
-            trainData[k].label = stoi(val);
-            for (i = 0; i < RES * RES; i++) {
-                getline(ss, val, ',');
-                trainData[k].vals[i] = stoi(val) / 255.0;
-            }
+            trainData[k].vals[i] = stoi(val) / 255.0;
         }
-        cin.close();
     }
+    cin.close();
 
-    ifstream cin2("data/mnist_test.txt");
+    ifstream cin2("data/emnist-digits-test.txt");
     for (k = 0; k < NUMTEST; k++) {
         cin2 >> inp;
         stringstream ss(inp);
@@ -267,7 +264,7 @@ int computeBatch(bool train, int batchSize, int start_idx) {
 void trainNetwork() {
     cout << "Training the neural net..." << endl;
     auto totalStart = chrono::high_resolution_clock::now();
-    int totalTrain = NUMTRAIN * TRAINFILES;
+    int totalTrain = NUMTRAIN;
     int totalBatches = totalTrain / BATCHSIZE;
     
     double decay1T = DECAY1;

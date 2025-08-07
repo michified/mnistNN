@@ -24,7 +24,7 @@ public:
 vector<Picture> testData;
 
 void readData() {
-    ifstream cin2("data/mnist_test.txt");
+    ifstream cin2("data/emnist-digits-test.txt");
     cout << "Reading data..." << endl;
     testData.resize(NUMTEST);
     int i, k;
