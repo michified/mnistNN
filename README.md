@@ -104,8 +104,7 @@
 
 ## 📖 References and Resources
 - 3Blue1Brown's Deep Learning course, episodes 1-4. https://www.youtube.com/playlist?list=PLZHQObOWTQDNU6R1_67000Dx_ZCJB-3pi
-- Hojjat Khodabakhsh. (2018). MNIST Dataset. https://www.kaggle.com/datasets/hojjatk/mnist-dataset
 - Adam optimization. https://www.geeksforgeeks.org/deep-learning/adam-optimizer/
-
 - eMNIST dataset. https://www.kaggle.com/datasets/crawford/emnist 
+
 
