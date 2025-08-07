@@ -13,7 +13,7 @@ using namespace std;
 
 const int RES = 28;
 const int NUMTRAIN = 240000;
-const int NUMTEST = 60000;
+const int NUMTEST = 40000;
 const int EPOCHS = 30;
 const int BATCHSIZE = 500;
 const int LAYERS = 2;
