@@ -1,11 +1,12 @@
 import pygame as pg
 import random
+import numpy as np
 
 RES = 28
 SCALEFACTOR = 28
 WIDTH = RES * SCALEFACTOR
 HEIGHT = RES * SCALEFACTOR
-NUMTEST = 10000
+NUMTEST = 40000
 OUTPUTS = 10
 
 pg.init()
@@ -25,6 +26,8 @@ class Picture:
         self.preds = tokens[0:-1]
     
 def display(picture):
+    picture.pixels = np.rot90(picture.pixels, k=-1)
+    picture.pixels = np.fliplr(picture.pixels)
     correct = False
     for i in range(RES):
         for j in range(RES):
@@ -54,7 +57,7 @@ def display(picture):
 pictures = []
 
 print("Reading data...")
-f = open("data\\mnist_test.txt", "r")
+f = open("data\\emnist-digits-test.txt", "r")
 for line in f:
     tokens = line.split(',')
     for i in range(len(tokens)):
@@ -66,6 +69,9 @@ f2 = open("preds.txt", "r")
 t = 0
 for line in f2:
     tokens = line.split(' ')
+    if len(tokens) != OUTPUTS + 1:
+        print("Error: Invalid prediction line length.")
+        continue
     for i in range(len(tokens) - 1):
         tokens[i] = float(tokens[i])
     pictures[t].setPreds(tokens)

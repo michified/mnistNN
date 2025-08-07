@@ -11,7 +11,7 @@
 #define endl "\n"
 using namespace std;
 
-const int NUMTEST = 10000;
+const int NUMTEST = 40000;
 const int RES = 28, OUTPUTS = 10;
 int LAYERS, LAYERSIZE;
 
@@ -42,7 +42,6 @@ void readData() {
     cin2.close();
     cout << "Finished reading data." << endl;
 }
-
 
 class Neuron {
 public:
@@ -79,8 +78,8 @@ vector<Layer> layers;
 
 vector<double> softmax() {
     vector<double> res(OUTPUTS);
-    double max_val = *max_element(&layers[LAYERS+1].neurons[0].z, 
-                                 &layers[LAYERS+1].neurons[OUTPUTS].z);
+    double max_val = *max_element(&layers[LAYERS + 1].neurons[0].z, 
+                                 &layers[LAYERS + 1].neurons[OUTPUTS].z);
     double tot = 0;
     for (int i = 0; i < OUTPUTS; i++) {
         res[i] = exp(layers[LAYERS + 1].neurons[i].z - max_val);
@@ -110,7 +109,7 @@ void initLayers() {
         layers[i].init(LAYERSIZE, prev);
         for (auto& neuron : layers[i].neurons) {
             for (int j = 0; j < prev; j++) {
-                neuron.connections[j].second = &layers[i-1].neurons[j];
+                neuron.connections[j].second = &layers[i - 1].neurons[j];
             }
         }
         prev = LAYERSIZE;

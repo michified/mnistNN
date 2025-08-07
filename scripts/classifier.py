@@ -1,15 +1,11 @@
-import pygame
+import pygame as pg
 import numpy as np
 
-GRID_SIZE = 18
-CELL_SIZE = 40 
-WIDTH, HEIGHT = GRID_SIZE * CELL_SIZE, GRID_SIZE * CELL_SIZE
-FPS = 60
-BLACK = (0, 0, 0)
-WHITE = (255, 255, 255)
-GREEN = (0, 255, 0)
+NUMTEST = 40000
 OUTPUTS = 10
-MODEL_GRID_SIZE = 28
+RES = 28
+LAYERS = 2
+LAYERSIZE = 50
 
 class Neuron:
     def __init__(self):
@@ -18,164 +14,188 @@ class Neuron:
         self.a = 0.0
         self.z = 0.0
 
-    def init(self, prev_neurons):
-        self.connections = [(0.0, neuron) for neuron in prev_neurons]
+    def init(self, prevN):
+        self.connections = [(0.0, None)] * prevN
+
+    @staticmethod
+    def ReLU(x):
+        return max(0.0, x)
 
     def computeVal(self, clamp):
         self.z = self.bias
-        for weight, prev_neuron in self.connections:
-            self.z += weight * prev_neuron.a
-        self.a = max(0.0, self.z) if clamp else self.z
+        for weight, neuron in self.connections:
+            self.z += weight * neuron.a
+        self.a = self.ReLU(self.z) if clamp else self.z
 
 class Layer:
     def __init__(self):
         self.neurons = []
 
-    def init(self, n, prev_neurons):
+    def init(self, n, prevN):
         self.neurons = [Neuron() for _ in range(n)]
         for neuron in self.neurons:
-            neuron.init(prev_neurons)
-            
-def softmax(z_values):
-    z_values = np.array(z_values)
-    max_z = np.max(z_values)
-    exp_z = np.exp(z_values - max_z)
-    return exp_z / np.sum(exp_z)
+            neuron.init(prevN)
 
 layers = []
-LAYERS = 0
-LAYERSIZE = 0
-brush = []
+
+def softmax():
+    res = [0.0] * OUTPUTS
+    max_val = max(neuron.z for neuron in layers[LAYERS + 1].neurons)
+    tot = 0.0
+    for i in range(OUTPUTS):
+        res[i] = np.exp(layers[LAYERS + 1].neurons[i].z - max_val)
+        tot += res[i]
+    for i in range(OUTPUTS):
+        res[i] /= tot
+    return res
 
 def initLayers():
-    global layers, LAYERS, LAYERSIZE
-    with open("model.txt", "r") as f:
-        lines = f.readlines()
-    first_line = lines[0].strip().split()
-    LAYERS = int(first_line[0])
-    LAYERSIZE = int(first_line[1])
-    values = []
-    for line in lines[1:]:
-        values.extend([float(x) for x in line.strip().split()])
+    print("Creating the neural net...")
+    try:
+        with open("model.txt", "r") as cin2:
+            global LAYERS, LAYERSIZE
+            LAYERS, LAYERSIZE = map(int, cin2.readline().split())
+            layers.extend([Layer() for _ in range(LAYERS + 2)])
 
-    layers = [Layer() for _ in range(LAYERS + 2)]
-    layers[0].init(MODEL_GRID_SIZE * MODEL_GRID_SIZE, [])
+            prev = RES * RES
+            layers[0].init(prev, 0)
+
+            for i in range(1, LAYERS + 1):
+                layers[i].init(LAYERSIZE, prev)
+                for neuron in layers[i].neurons:
+                    for j in range(prev):
+                        neuron.connections[j] = (0.0, layers[i - 1].neurons[j])
+                prev = LAYERSIZE
+
+            layers[LAYERS + 1].init(OUTPUTS, prev)
+            for neuron in layers[LAYERS + 1].neurons:
+                for j in range(prev):
+                    neuron.connections[j] = (0.0, layers[LAYERS].neurons[j])
+
+            for l in range(1, LAYERS + 2):
+                currentSize = OUTPUTS if l == LAYERS + 1 else LAYERSIZE
+                prevSize = RES * RES if l == 1 else LAYERSIZE
+
+                for n in range(currentSize):
+                    for p in range(prevSize):
+                        try:
+                            layers[l].neurons[n].connections[p] = (float(cin2.readline().strip()), layers[l - 1].neurons[p])
+                        except ValueError:
+                            print(f"Error reading weights at layer {l}, neuron {n}, connection {p}")
+                            exit(1)
+
+                    try:
+                        layers[l].neurons[n].bias = float(cin2.readline().strip())
+                    except ValueError:
+                        print(f"Error reading bias at layer {l}, neuron {n}")
+                        exit(1)
+
+            dummy = cin2.readline()
+            if dummy:
+                print("Warning: Extra data in model file!")
+
+            print("Network imported successfully.")
+    except FileNotFoundError:
+        print("Error: Could not open model file!")
+        exit(1)
+
+def getPreds():
+    pixels = np.fliplr(grid)
+    pixels = np.rot90(pixels, k=1)
+    pixels = np.array(pixels, dtype=float).flatten()
+    for i in range(RES * RES):
+        layers[0].neurons[i].a = pixels[i]
+
     for i in range(1, LAYERS + 1):
-        layers[i].init(LAYERSIZE, layers[i-1].neurons)
-    layers[LAYERS + 1].init(OUTPUTS, layers[LAYERS].neurons)
+        for j in range(LAYERSIZE):
+            layers[i].neurons[j].computeVal(True)
 
-    idx = 0
-    for l in range(1, LAYERS + 2):
-        current_size = OUTPUTS if l == LAYERS + 1 else LAYERSIZE
-        prev_size = MODEL_GRID_SIZE * MODEL_GRID_SIZE if l == 1 else LAYERSIZE
-        for n in range(current_size):
-            for p in range(prev_size):
-                weight = values[idx]
-                prev_neuron = layers[l-1].neurons[p]
-                layers[l].neurons[n].connections[p] = (weight, prev_neuron)
-                idx += 1
-            layers[l].neurons[n].bias = values[idx]
-            idx += 1
+    for i in range(OUTPUTS):
+        layers[LAYERS + 1].neurons[i].computeVal(False)
+
+    return softmax()
 
 screen = None
 grid = None
 font = None
+GRID_SIZE = 28
+CELL_SIZE = 30
+WIDTH, HEIGHT = GRID_SIZE * CELL_SIZE, GRID_SIZE * CELL_SIZE
+FPS = 60
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+GREEN = (0, 255, 0)
+OUTPUTS = 10
 
 def setup():
     global screen, grid, font, brush
-    pygame.init()
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pg.init()
+    screen = pg.display.set_mode((WIDTH, HEIGHT))
     grid = [[0.0 for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
-    font = pygame.font.SysFont(None, 24)
+    font = pg.font.SysFont(None, 24)
     
     brush = [
-        [0.2, 0.4, 0.2],
-        [0.4, 1.0, 0.4],
-        [0.2, 0.4, 0.2]
+        [0.1, 0.2, 0.3, 0.2, 0.1],
+        [0.2, 0.4, 0.6, 0.4, 0.2],
+        [0.3, 0.6, 1.0, 0.6, 0.3],
+        [0.2, 0.4, 0.6, 0.4, 0.2],
+        [0.1, 0.2, 0.3, 0.2, 0.1]
     ]
 
 def apply_brush(grid, grid_x, grid_y):
-    for dy in range(-1, 2):
-        for dx in range(-1, 2):
+    for dy in range(-2, 3):
+        for dx in range(-2, 3):
             x = grid_x + dx
             y = grid_y + dy
             if 0 <= x < GRID_SIZE and 0 <= y < GRID_SIZE:
-                brush_value = brush[dy + 1][dx + 1]
+                brush_value = brush[dy + 2][dx + 2]
                 grid[y][x] = max(grid[y][x], brush_value)
 
-def pad_grid(grid):
-    padded = [[0.0 for _ in range(MODEL_GRID_SIZE)] for _ in range(MODEL_GRID_SIZE)]
-    offset = (MODEL_GRID_SIZE - GRID_SIZE) // 2
-    for y in range(GRID_SIZE):
-        for x in range(GRID_SIZE):
-            padded[y + offset][x + offset] = grid[y][x]
-    return padded
-
-def draw_grid(predictions):
+def draw_grid():
     screen.fill(BLACK)
     for y in range(GRID_SIZE):
         for x in range(GRID_SIZE):
             value = grid[y][x]
             color = (int(255 * value), int(255 * value), int(255 * value))
-            pygame.draw.rect(screen, color, (x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE))
-    if predictions is not None:
-        max_idx = np.argmax(predictions)
-        text = "Predictions:"
-        color = WHITE
-        text_surface = font.render(text, True, color)
-        screen.blit(text_surface, (30, 30))
-        for i in range(OUTPUTS):
-            text = f"{i}: {predictions[i] * 100:.1f}%"
-            color = GREEN if i == max_idx else WHITE
-            text_surface = font.render(text, True, color)
-            screen.blit(text_surface, (30, 60 + i * 30))
+            pg.draw.rect(screen, color, (x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE))
     text = "Press c to clear the grid"
     color = WHITE
     text_surface = font.render(text, True, color)
     screen.blit(text_surface, (30, HEIGHT - 60))
-    pygame.display.flip()
+    preds = getPreds()
+    for i in range(OUTPUTS):
+        label = font.render(f"{i}: {preds[i]:.2f}", True, WHITE if preds[i] != max(preds) else GREEN)
+        screen.blit(label, (10, 10 + i * 20))
+    pg.display.flip()
 
 def update_loop():
     global grid
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
+    for event in pg.event.get():
+        if event.type == pg.QUIT:
             return False
-        elif event.type == pygame.MOUSEBUTTONDOWN:
+        elif event.type == pg.MOUSEBUTTONDOWN:
             if event.button == 1:
                 mouse_x, mouse_y = event.pos
                 if 0 <= mouse_x < WIDTH and 0 <= mouse_y < HEIGHT:
                     grid_x = mouse_x // CELL_SIZE
                     grid_y = mouse_y // CELL_SIZE
                     apply_brush(grid, grid_x, grid_y)
-        elif event.type == pygame.MOUSEMOTION:
+        elif event.type == pg.MOUSEMOTION:
             if event.buttons[0]:
                 mouse_x, mouse_y = event.pos
                 if 0 <= mouse_x < WIDTH and 0 <= mouse_y < HEIGHT:
                     grid_x = mouse_x // CELL_SIZE
                     grid_y = mouse_y // CELL_SIZE
                     apply_brush(grid, grid_x, grid_y)
-        elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_c:
+        elif event.type == pg.KEYDOWN:
+            if event.key == pg.K_c:
                 grid = [[0.0 for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
-
-
-    padded_grid = pad_grid(grid)
-    input_data = [padded_grid[y][x] for y in range(MODEL_GRID_SIZE) for x in range(MODEL_GRID_SIZE)]
-    for i in range(MODEL_GRID_SIZE * MODEL_GRID_SIZE):
-        layers[0].neurons[i].a = input_data[i]
-    for i in range(1, LAYERS + 1):
-        for neuron in layers[i].neurons:
-            neuron.computeVal(True)
-    for neuron in layers[LAYERS + 1].neurons:
-        neuron.computeVal(False)
-    z_output = [neuron.z for neuron in layers[LAYERS + 1].neurons]
-    predictions = softmax(z_output)
-    draw_grid(predictions)
+    draw_grid()
     return True
 
-if __name__ == "__main__":
-    initLayers()
-    setup()
-    running = True
-    while running:
-        running = update_loop()
+
+initLayers()
+setup()
+running = True
+while running:
+    running = update_loop()
