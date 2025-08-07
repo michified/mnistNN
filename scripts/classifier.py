@@ -136,9 +136,9 @@ def setup():
     
     brush = [
         [0.1, 0.2, 0.3, 0.2, 0.1],
-        [0.2, 0.4, 0.8, 0.4, 0.2],
+        [0.2, 0.6, 0.8, 0.6, 0.2],
         [0.3, 0.8, 1.0, 0.8, 0.3],
-        [0.2, 0.4, 0.8, 0.4, 0.2],
+        [0.2, 0.6, 0.8, 0.6, 0.2],
         [0.1, 0.2, 0.3, 0.2, 0.1]
     ]
 
@@ -166,6 +166,7 @@ def draw_grid():
     for i in range(OUTPUTS):
         label = font.render(f"{i}: {preds[i]:.2f}", True, WHITE if preds[i] != max(preds) else GREEN)
         screen.blit(label, (10, 10 + i * 20))
+        pg.draw.rect(screen, WHITE if preds[i] != max(preds) else GREEN, (70, 10 + i * 20, preds[i] * 50, 13))
     pg.display.flip()
 
 def update_loop():
