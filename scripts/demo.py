@@ -1,7 +1,6 @@
 import pygame as pg
 import numpy as np
 
-NUMTEST = 40000
 OUTPUTS = 10
 RES = 28
 LAYERS = 2
