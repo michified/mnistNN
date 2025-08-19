@@ -200,8 +200,28 @@ def draw_screen(grid, inference_grid):
         screen.blit(label, (10, 10 + i * 20))
         pg.draw.rect(screen, WHITE if preds[i] != max(preds) else GREEN, (70, 10 + i * 20, preds[i] * 50, 13))
     pg.display.flip()
+
+def interpolate_coords(coord_list):
+    if len(coord_list) < 3:
+        return coord_list
+    if len(coord_list) > 50:
+        return coord_list
+    new_coord_list = []
+    interpolation_factor = 100 // len(coord_list)
+    for i in range(len(coord_list) - 1):
+        x1, y1 = coord_list[i]
+        x2, y2 = coord_list[i + 1]
+        for i in range(interpolation_factor):
+            t = i / interpolation_factor
+            new_x = int(x1 + (x2 - x1) * t)
+            new_y = int(y1 + (y2 - y1) * t)
+            new_coord_list.append((new_x, new_y))
+    new_coord_list.append(coord_list[-1])
+    return new_coord_list
     
 def display_all():
+    global draw_coords
+    draw_coords = interpolate_coords(draw_coords)
     scale_coords()
     grid = get_grid_from_coords(draw_coords)
     inference_grid = get_grid_from_coords(scaled_coords)
