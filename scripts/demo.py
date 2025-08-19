@@ -119,7 +119,7 @@ grid = None
 font = None
 draw_coords = None
 scaled_coords = None
-update = False
+update_timer = 0
 GRID_SIZE = 28
 CELL_SIZE = 30
 WIDTH, HEIGHT = GRID_SIZE * CELL_SIZE, GRID_SIZE * CELL_SIZE
@@ -228,7 +228,7 @@ def display_all():
     draw_screen(grid, inference_grid)
 
 def update_loop():
-    global scaled_coords, draw_coords, update
+    global scaled_coords, draw_coords, update_timer
     for event in pg.event.get():
         if event.type == pg.QUIT:
             return False
@@ -244,9 +244,10 @@ def update_loop():
                 draw_coords = []
                 scaled_coords = []
                 display_all()
-        update = not update
-        if update:
+        update_timer += 1
+        if update_timer == 5:
             display_all()
+            update_timer = 0
     return True
 
 
