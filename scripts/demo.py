@@ -98,7 +98,7 @@ def initLayers():
         print("Error: Could not open model file!")
         exit(1)
 
-def getPreds():
+def getPreds(grid):
     pixels = np.fliplr(grid)
     pixels = np.rot90(pixels, k=1)
     pixels = np.array(pixels, dtype=float).flatten()
@@ -117,6 +117,9 @@ def getPreds():
 screen = None
 grid = None
 font = None
+draw_coords = None
+scaled_coords = None
+update = False
 GRID_SIZE = 28
 CELL_SIZE = 30
 WIDTH, HEIGHT = GRID_SIZE * CELL_SIZE, GRID_SIZE * CELL_SIZE
@@ -127,7 +130,7 @@ GREEN = (0, 255, 0)
 OUTPUTS = 10
 
 def setup():
-    global screen, grid, font, brush
+    global screen, grid, font, brush, draw_coords, scaled_coords
     pg.init()
     screen = pg.display.set_mode((WIDTH, HEIGHT))
     grid = [[0.0 for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
@@ -140,8 +143,30 @@ def setup():
         [0.2, 0.6, 0.8, 0.6, 0.2],
         [0.1, 0.2, 0.3, 0.2, 0.1]
     ]
+    
+    draw_coords = []
+    scaled_coords = []
+    
+def scale_coords():
+    global draw_coords, scaled_coords
+    if len(draw_coords) == 0:
+        return
+    if len(draw_coords) == 1:
+        scaled_coords = [(WIDTH // 2, HEIGHT // 2)]
+        return
+    scaled_coords = []
+    top_left_corner = (min(x for x, y in draw_coords), min(y for x, y in draw_coords))
+    boottom_right_corner = (max(x for x, y in draw_coords), max(y for x, y in draw_coords))
+    center = ((top_left_corner[0] + boottom_right_corner[0]) // 2, (top_left_corner[1] + boottom_right_corner[1]) // 2)
+    scale_factor = min(WIDTH // (1 if boottom_right_corner[0] - top_left_corner[0] == 0 else boottom_right_corner[0] - top_left_corner[0]), 
+                       HEIGHT // (1 if boottom_right_corner[1] - top_left_corner[1] == 0 else boottom_right_corner[1] - top_left_corner[1]))
+    for x, y in draw_coords:
+        scaled_x = (x - center[0]) * scale_factor + WIDTH // 2
+        scaled_y = (y - center[1]) * scale_factor + HEIGHT // 2
+        scaled_coords.append((scaled_x, scaled_y))
 
 def apply_brush(grid, grid_x, grid_y):
+    global brush
     for dy in range(-2, 3):
         for dx in range(-2, 3):
             x = grid_x + dx
@@ -149,8 +174,16 @@ def apply_brush(grid, grid_x, grid_y):
             if 0 <= x < GRID_SIZE and 0 <= y < GRID_SIZE:
                 brush_value = brush[dy + 2][dx + 2]
                 grid[y][x] = max(grid[y][x], brush_value)
+                
+def get_grid_from_coords(coord_list):
+    grid = [[0.0 for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
+    for x, y in coord_list:
+        grid_x = x // CELL_SIZE
+        grid_y = y // CELL_SIZE
+        apply_brush(grid, grid_x, grid_y)
+    return grid
 
-def draw_grid():
+def draw_screen(grid, inference_grid):
     screen.fill(BLACK)
     for y in range(GRID_SIZE):
         for x in range(GRID_SIZE):
@@ -161,36 +194,39 @@ def draw_grid():
     color = WHITE
     text_surface = font.render(text, True, color)
     screen.blit(text_surface, (30, HEIGHT - 60))
-    preds = getPreds()
+    preds = getPreds(inference_grid)
     for i in range(OUTPUTS):
         label = font.render(f"{i}: {preds[i]:.2f}", True, WHITE if preds[i] != max(preds) else GREEN)
         screen.blit(label, (10, 10 + i * 20))
         pg.draw.rect(screen, WHITE if preds[i] != max(preds) else GREEN, (70, 10 + i * 20, preds[i] * 50, 13))
     pg.display.flip()
+    
+def display_all():
+    scale_coords()
+    grid = get_grid_from_coords(draw_coords)
+    inference_grid = get_grid_from_coords(scaled_coords)
+    draw_screen(grid, inference_grid)
 
 def update_loop():
-    global grid
+    global scaled_coords, draw_coords, update
     for event in pg.event.get():
         if event.type == pg.QUIT:
             return False
         elif event.type == pg.MOUSEBUTTONDOWN:
             if event.button == 1:
                 mouse_x, mouse_y = event.pos
-                if 0 <= mouse_x < WIDTH and 0 <= mouse_y < HEIGHT:
-                    grid_x = mouse_x // CELL_SIZE
-                    grid_y = mouse_y // CELL_SIZE
-                    apply_brush(grid, grid_x, grid_y)
         elif event.type == pg.MOUSEMOTION:
             if event.buttons[0]:
                 mouse_x, mouse_y = event.pos
-                if 0 <= mouse_x < WIDTH and 0 <= mouse_y < HEIGHT:
-                    grid_x = mouse_x // CELL_SIZE
-                    grid_y = mouse_y // CELL_SIZE
-                    apply_brush(grid, grid_x, grid_y)
+                draw_coords.append((mouse_x, mouse_y))
         elif event.type == pg.KEYDOWN:
             if event.key == pg.K_c:
-                grid = [[0.0 for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
-    draw_grid()
+                draw_coords = []
+                scaled_coords = []
+                display_all()
+        update = not update
+        if update:
+            display_all()
     return True
 
 
