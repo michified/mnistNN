@@ -160,9 +160,10 @@ def scale_coords():
     center = ((top_left_corner[0] + boottom_right_corner[0]) // 2, (top_left_corner[1] + boottom_right_corner[1]) // 2)
     scale_factor = min(WIDTH // (boottom_right_corner[0] - top_left_corner[0] + 1), 
                        HEIGHT // (boottom_right_corner[1] - top_left_corner[1] + 1))
+    final_scale_factor = 0.8
     for x, y in draw_coords:
-        scaled_x = int((x - center[0]) * scale_factor + WIDTH // 2)
-        scaled_y = int((y - center[1]) * scale_factor + HEIGHT // 2)
+        scaled_x = int((x - center[0]) * scale_factor * final_scale_factor + WIDTH // 2)
+        scaled_y = int((y - center[1]) * scale_factor * final_scale_factor + HEIGHT // 2)
         scaled_coords.append((scaled_x, scaled_y))
 
 def apply_brush(grid, grid_x, grid_y):
